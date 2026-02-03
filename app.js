@@ -2,21 +2,25 @@ const express = require('express')
 const app = express()
 const port = 3002
 
-app.get('/user', (req, res) => {
+app.get('/users', (req, res) => {
     const {name, lastname} = req.query;
   res.send(`Hello ${name} ${lastname}!`)
 })
 
-app.post('/', (req, res) => {
-  res.send('Got a POST request')
+app.post('/users', (req, res) => {
+  res.send('Got a POST request at /user')
 })
 
-app.put('/user', (req, res) => {
+app.put('/users', (req, res) => {
   res.send('Got a PUT request at /user')
 })
 
-app.delete('/user', (req, res) => {
+app.delete('/users', (req, res) => {
   res.send('Got a DELETE request at /user')
+})
+
+app.use((req, res) => {
+  res.status(404).send('Not Found')
 })
 
 app.listen(port, () => {
