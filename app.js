@@ -1,90 +1,103 @@
-const express = require("express");
-const fs = require("fs");
-const app = express();
-const port = process.env.PORT || 3000;
 require("dotenv").config();
 
+const express = require("express");
+const { MongoClient, ObjectId } = require("mongodb");
+
+const app = express();
+const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// GET todos los usuarios
-app.get("/users", (req, res) => {
-  const users = JSON.parse(fs.readFileSync("users.json"));
-  res.json(users);
-});
+const uri = process.env.MONGO_URI || "mongodb://localhost:27017/myapp";
+const client = new MongoClient(uri);
 
-// GET usuario por ID
-app.get("/users/:id", (req, res) => {
-  const users = JSON.parse(fs.readFileSync("users.json"));
-  const id = parseInt(req.params.id);
+let db;
 
-  const user = users.find((u) => u.id === id);
-
-  if (!user) {
-    return res.status(404).json({ error: "Usuario no encontrado" });
+async function connectDB() {
+  try {
+    await client.connect();
+    db = client.db(); // obtenemos la base de datos
+    console.log("MongoDB conectado");
+  } catch (error) {
+    console.error("Error al conectar MongoDB", error);
   }
+}
 
-  res.json(user);
-});
+connectDB();
 
-// POST agregar usuario
-app.post("/users", (req, res) => {
-  const users = JSON.parse(fs.readFileSync("users.json"));
-
-  // solo agregamos el body
-  users.push(req.body);
-
-  fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
-
-  res.json({ message: "Usuario agregado" });
-});
-
-
-// DELETE usuario
-app.delete("/users", (req, res) => {
-  const users = JSON.parse(fs.readFileSync("users.json"));
-
-  // viene de ?id=1
-  const id = Number(req.query.id);
-
-  // validación básica
-  if (!id) {
-    return res.status(400).json({ error: "ID requerido en query (?id=)" });
+app.get("/users", async (req, res) => {
+  try {
+    const users = await db.collection("users").find().toArray();
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: "Error al obtener usuarios" });
   }
-
-  const newUsers = users.filter((u) => Number(u.id) !== id);
-
-  if (users.length === newUsers.length) {
-    return res.status(404).json({ error: "Usuario no encontrado" });
-  }
-
-  fs.writeFileSync("users.json", JSON.stringify(newUsers, null, 2));
-  res.json({ message: "Usuario eliminado" });
 });
 
-// PUT editar usuario
-app.put("/users", (req, res) => {
-  const users = JSON.parse(fs.readFileSync("users.json"));
-  const id = Number(req.query.id);
+app.get("/users/:id", async (req, res) => {
+  try {
+    const user = await db
+      .collection("users")
+      .findOne({ _id: new ObjectId(req.params.id) });
 
-  const index = users.findIndex(
-    (u) => u && Number(u.id) === id
-  );
+    if (!user) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
 
-  if (index === -1) {
-    return res.status(404).json({ error: "Usuario no encontrado" });
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: "Error al obtener usuario" });
   }
-
-  users[index] = {
-    ...users[index],
-    ...req.body
-  };
-
-  fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
-  res.json({ message: "Usuario actualizado" });
+});
+   
+/* agregar usuario */
+app.post("/users", async (req, res) => {
+  try {
+    const result = await db.collection("users").insertOne(req.body);
+    res.json({
+      message: "Usuario agregado",
+      id: result.insertedId,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Error al agregar usuario" });
+  }
 });
 
-// 404
+/* eliminar usuario */
+app.delete("/users/:id", async (req, res) => {
+  try {
+    const result = await db.collection("users").deleteOne({
+      _id: new ObjectId(req.params.id),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    res.json({ message: "Usuario eliminado" });
+  } catch (error) {
+    res.status(500).json({ error: "Error al eliminar usuario" });
+  }
+});
+
+/* editar usuario */
+app.put("/users/:id", async (req, res) => {
+  try {
+    const result = await db.collection("users").updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: req.body }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    res.json({ message: "Usuario actualizado" });
+  } catch (error) {
+    res.status(500).json({ error: "Error al actualizar usuario" });
+  }
+});
+
 app.use((req, res) => {
   res.status(404).send("Not Found");
 });
